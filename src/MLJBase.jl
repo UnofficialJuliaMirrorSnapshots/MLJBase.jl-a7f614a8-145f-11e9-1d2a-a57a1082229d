@@ -16,7 +16,7 @@ export fitresult_type
 export params                                        # parameters.jl
 export selectrows, selectcols, select, nrows, schema # data.jl
 export table, levels_seen, matrix, container_type    # data.jl
-export partition                                     # utilities.jl
+export partition,StratifiedKFold                     # utilities.jl
 export Found, Continuous, Discrete, OrderedFactor    # scitypes.jl
 export FiniteOrderedFactor                           # scitypes.jl
 export Count, Multiclass, Binary                     # scitypes.jl
@@ -45,7 +45,7 @@ import CSV
 using DataFrames # remove ultimately
 
 # to be extended:
-import StatsBase: fit, predict
+import StatsBase: fit, predict, fit!
 
 # from Standard Library:
 using Statistics
@@ -82,6 +82,29 @@ abstract type Probabilistic{R} <: Supervised{R} end
 
 # supervised models that `predict` point-values are of:
 abstract type Deterministic{R} <: Supervised{R} end
+
+# MLJType objects are `==` if: (i) they have a common supertype AND (ii)
+# they have the same set of defined fields AND (iii) their defined field
+# values are `==`:
+function ==(m1::M1, m2::M2) where {M1<:MLJType,M2<:MLJType}
+    if M1 != M1
+        return false
+    end
+    defined1 = filter(fieldnames(M1)|>collect) do fld
+        isdefined(m1, fld)
+    end
+    defined2 = filter(fieldnames(M1)|>collect) do fld
+        isdefined(m2, fld)
+    end
+    if defined1 != defined2
+        return false
+    end
+    same_values = true
+    for fld in defined1
+        same_values = same_values && getfield(m1, fld) == getfield(m2, fld)
+    end
+    return same_values
+end
 
 
 ## THE MODEL INTERFACE
@@ -189,15 +212,6 @@ Returns the fitresult type of any supervised model (or model type)
 """
 fitresult_type(M::Type{<:Supervised}) = supertype(M).parameters[1]
 fitresult_type(m::Supervised) = fitresult_type(typeof(m))
-
-# models are `==` if they have the same type and their field values are `==`:
-function ==(m1::M, m2::M) where M<:Model
-    ret = true
-    for fld in fieldnames(M)
-        ret = ret && getfield(m1, fld) == getfield(m2, fld)
-    end
-    return ret
-end
 
 # for unpacking the fields of MLJ objects:
 include("parameters.jl")
