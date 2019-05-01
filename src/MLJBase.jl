@@ -1,5 +1,5 @@
 # Users of this module should first read the document
-# https://github.com/alan-turing-institute/MLJ.jl/blob/master/doc/adding_new_models.md 
+# https://alan-turing-institute.github.io/MLJ.jl/dev/adding_models_for_general_use/
 
 module MLJBase
 
@@ -8,8 +8,8 @@ export fit, update, clean!
 export predict, predict_mean, predict_mode, fitted_params
 export transform, inverse_transform, se, evaluate, best
 export load_path, package_url, package_name, package_uuid
-export input_scitypes, input_is_multivariate       
-export target_scitype, target_quantity            
+export input_scitype_union, input_is_multivariate       
+export target_scitype_union, target_quantity            
 export is_pure_julia, is_wrapper                                 
 export fitresult_type
 
@@ -20,9 +20,9 @@ export partition,StratifiedKFold                     # utilities.jl
 export Found, Continuous, Discrete, OrderedFactor    # scitypes.jl
 export FiniteOrderedFactor                           # scitypes.jl
 export Count, Multiclass, Binary                     # scitypes.jl
-export scitype, union_scitypes                       # scitypes.jl
-export union_scitypes, column_scitypes_as_tuple      # scitypes.jl
+export scitype, scitype_union, scitypes              # scitypes.jl
 export HANDLE_GIVEN_ID, @more, @constant             # show.jl
+export color_on, color_off                           # show.jl
 export UnivariateNominal, average                    # distributions.jl
 export SupervisedTask, UnsupervisedTask, MLJTask     # tasks.jl
 export X_and_y, X_, y_, nrows, nfeatures             # tasks.jl
@@ -147,10 +147,10 @@ function best end
 clean!(model::Model) = ""
 
 # fallback trait declarations:
-target_scitype(::Type{<:Supervised}) = Union{Found,NTuple{<:Found}}  # a Tuple type in multivariate case
-output_scitypes(::Type{<:Unsupervised}) = Union{Missing,Found} # never a Tuple type
+target_scitype_union(::Type{<:Supervised}) = Union{Found,NTuple{<:Found}}  # a Tuple type in multivariate case
+output_scitype_union(::Type{<:Unsupervised}) = Union{Missing,Found} # never a Tuple type
 output_is_multivariate(::Type{<:Unsupervised}) = true
-input_scitypes(::Type{<:Model}) = Union{Missing,Found}
+input_scitype_union(::Type{<:Model}) = Union{Missing,Found}
 input_is_multivariate(::Type{<:Model}) = true 
 is_pure_julia(::Type{<:Model}) = false
 package_name(::Type{<:Model}) = "unknown"
@@ -161,8 +161,8 @@ is_wrapper(::Type{<:Model}) = false
 is_wrapper(m::Model) = is_wrapper(typeof(m))
 
 
-target_scitype(model::Model) = target_scitype(typeof(model))
-input_scitypes(model::Model) = input_scitypes(typeof(model))
+target_scitype_union(model::Model) = target_scitype_union(typeof(model))
+input_scitype_union(model::Model) = input_scitype_union(typeof(model))
 input_is_multivariate(model::Model) = input_is_multivariate(typeof(model))
 is_pure_julia(model::Model) = is_pure_julia(typeof(model))
 package_name(model::Model) = package_name(typeof(model))
@@ -175,7 +175,7 @@ package_url(model::Model) = package_url(typeof(model))
 
 # mode:
 predict_mode(model::Probabilistic, fitresult, Xnew) =
-    predict_mode(model, fitresult, target_scitype(model), Xnew)
+    predict_mode(model, fitresult, target_scitype_union(model), Xnew)
 function predict_mode(model::Probabilistic, fitresult, ::Type{<:Union{Multiclass,OrderedFactor}}, Xnew)
     prob_predictions = predict(model, fitresult, Xnew)
     null = categorical(levels(prob_predictions[1]))[1:0] # empty cat vector with all levels
@@ -191,7 +191,7 @@ predict_mean(model::Probabilistic, fitresult, Xnew) =
 
 # median:
 predict_median(model::Probabilistic, fitresult, Xnew) =
-    predict_median(model, fitresult, target_scitype(model), Xnew)
+    predict_median(model, fitresult, target_scitype_union(model), Xnew)
 function predict_median(model::Probabilistic, fitresult, ::Type{<:OrderedFactor}, Xnew) 
     prob_predictions = predict(model, fitresult, Xnew)
     null = categorical(levels(prob_predictions[1]))[1:0] # empty cat vector with all levels
