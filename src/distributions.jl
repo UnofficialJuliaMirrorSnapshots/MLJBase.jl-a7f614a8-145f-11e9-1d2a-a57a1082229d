@@ -17,7 +17,7 @@ isdistribution(::Type{<:Any}) = false
 # for distributions in Distributions.jl:
 isdistribution(::Type{<:Distributions.Distribution}) = true
 
-# for MLJ custom distibutions defined below:
+# for MLJ custom distributions defined below:
 isdistribution(::Type{Distribution}) = true  
 
 isdistribution(d) = isdistribution(typeof(d))
@@ -25,67 +25,86 @@ isdistribution(d) = isdistribution(typeof(d))
 
 ## UNIVARIATE NOMINAL PROBABILITY DISTRIBUTION
 
+# to pad a dictionary of probabilities with zeros for unseen levels,
+# if the key type is CategoricalElement:
+pad_probabilities(prob_given_level) = prob_given_level
+@inline function pad_probabilities(prob_given_level::Dict{<:CategoricalElement, T}) where T
+    proto_element = first(keys(prob_given_level))
+    return merge!(Dict([y=>zero(T) for y in classes(proto_element)]),
+                  prob_given_level)
+end
+
 """
-    UnivariateNominal(prob_given_level)
-
-A discrete univariate distribution whose finite support is the set of keys of the
-provided dictionary, `prob_given_level`. The dictionary values specify
-the corresponding probabilities, which must be nonnegative and sum to
-one.
-
-    UnivariateNominal(levels, p)
+    UnivariateFinite(levels, p)
 
 A discrete univariate distribution whose finite support is the
 elements of the vector `levels`, and whose corresponding probabilities
-are elements of the vector `p`.
+are elements of the vector `p`, which must sum to one.
 
-    levels(d::UnivariateNominal)
+In the special case that `levels` has type `AbstractVector{L}` where
+`L <: CategoricalValue` or `L <: CategoricalString` (for example
+`levels` is a `CategoricalVector`) the constructor adds the unobserved
+classes (from the common pool) with probability zero.
+
+    UnivariateFinite(prob_given_level)
+
+A discrete univariate distribution whose finite support is the set of
+keys of the provided dictionary, `prob_given_level`. The dictionary
+values specify the corresponding probabilities, which must be
+nonnegative and sum to one. 
+
+In the special case that `keys(prob_given_level)` has type
+`AbstractVector{L}` where `L <: CategoricalValue` or `L <:
+CategoricalString` (for example it is a `CategoricalVector`) the
+constructor adds the unobserved classes from the common pool with
+probability zero.
+
+    levels(d::UnivariateFinite)
 
 Return the levels of `d`.
 
 ````julia
-d = UnivariateNominal(["yes", "no", "maybe"], [0.1, 0.2, 0.7])
+d = UnivariateFinite(["yes", "no", "maybe"], [0.1, 0.2, 0.7])
 pdf(d, "no") # 0.2
 mode(d) # "maybe"
 rand(d, 5) # ["maybe", "no", "maybe", "maybe", "no"]
-d = fit(UnivariateNominal, ["maybe", "no", "maybe", "yes"])
+d = fit(UnivariateFinite, ["maybe", "no", "maybe", "yes"])
 pdf(d, "maybe") ≈ 0.5 # true
 levels(d) # ["yes", "no", "maybe"]
 ````
 
-If `v` is a `CategoricalVector` then `fit(UnivariateNominal, v)`
-includes *all* levels in pool of `v` in its support, assigning unseen
-levels probability zero.
+If the element type of `v` is a `CategoricalValue` or
+`CategoricalString`, then `fit(UnivariateFinite, v)` assigns a
+probability of zero to unobserved classes from the common pool.
+
+See also classes
 
 """
-struct UnivariateNominal{L,T<:Real} <: Distribution
+struct UnivariateFinite{L,T<:Real} <: Distribution
     prob_given_level::Dict{L,T}
-    function UnivariateNominal{L,T}(prob_given_level::Dict{L,T}) where {L,T<:Real}
+    function UnivariateFinite{L,T}(prob_given_level::Dict{L,T}) where {L,T<:Real}
         p = values(prob_given_level) |> collect
-        Distributions.@check_args(UnivariateNominal, Distributions.isprobvec(p))
-        return new{L,T}(prob_given_level)
+        Distributions.@check_args(UnivariateFinite, Distributions.isprobvec(p))
+        return new{L,T}(pad_probabilities(prob_given_level))
     end
 end
-UnivariateNominal(prob_given_level::Dict{L,T}) where {L,T<:Real} =
-    UnivariateNominal{L,T}(prob_given_level)
 
-function UnivariateNominal(levels::Union{Vector{L},CategoricalVector{L}},
-                           p::Vector{T}) where {L,T<:Real}
-        Distributions.@check_args(UnivariateNominal, length(levels)==length(p))
-        prob_given_level = Dict{L,T}()
-        for i in eachindex(p)
-            prob_given_level[levels[i]] = p[i]
-        end
-        return  UnivariateNominal(prob_given_level)
+UnivariateFinite(prob_given_level::Dict{L,T}) where {L,T<:Real} =
+    UnivariateFinite{L,T}(prob_given_level)
+
+function UnivariateFinite(levels::AbstractVector, p::AbstractVector{<:Real})
+        Distributions.@check_args(UnivariateFinite, length(levels)==length(p))
+    prob_given_level = Dict([levels[i]=>p[i] for i in eachindex(p)])
+    return  UnivariateFinite(prob_given_level)
 end
 
-CategoricalArrays.levels(d::UnivariateNominal) = keys(d.prob_given_level) |> collect
+CategoricalArrays.levels(d::UnivariateFinite) = collect(keys(d.prob_given_level))
 
-function average(dvec::Vector{UnivariateNominal{L,T}}; weights=nothing) where {L,T}
+function average(dvec::Vector{UnivariateFinite{L,T}}; weights=nothing) where {L,T}
 
     n = length(dvec)
     
-    Distributions.@check_args(UnivariateNominal, weights == nothing || n==length(weights))
+    Distributions.@check_args(UnivariateFinite, weights == nothing || n==length(weights))
 
     if weights == nothing
         weights = fill(1/n, n)
@@ -114,11 +133,11 @@ function average(dvec::Vector{UnivariateNominal{L,T}}; weights=nothing) where {L
         end
     end
 
-    return UnivariateNominal(prob_given_level)
+    return UnivariateFinite(prob_given_level)
 
 end        
 
-function Distributions.mode(d::UnivariateNominal)
+function Distributions.mode(d::UnivariateFinite)
     dic = d.prob_given_level
     p = values(dic)
     max_prob = maximum(p)
@@ -132,10 +151,10 @@ function Distributions.mode(d::UnivariateNominal)
     return m
 end
 
-Distributions.pdf(d::UnivariateNominal, x) = d.prob_given_level[x]
+Distributions.pdf(d::UnivariateFinite, x) = d.prob_given_level[x]
 
 """
-    _cummulative(d::UnivariateNominal)
+    _cummulative(d::UnivariateFinite)
 
 Return the cummulative probability vector `[0, ..., 1]` for the
 distribution `d`, using whatever ordering is used in the dictionary
@@ -143,7 +162,7 @@ distribution `d`, using whatever ordering is used in the dictionary
 `d`.
 
 """
-function _cummulative(d::UnivariateNominal{L,T}) where {L,T<:Real}
+function _cummulative(d::UnivariateFinite{L,T}) where {L,T<:Real}
     p = collect(values(d.prob_given_level))
     K = length(p)
     p_cummulative = Array{T}(undef, K + 1)
@@ -178,41 +197,25 @@ function _rand(p_cummulative)
     return index
 end
 
-function Base.rand(d::UnivariateNominal)
+function Base.rand(d::UnivariateFinite)
     p_cummulative = _cummulative(d)
     levels = collect(keys(d.prob_given_level))
     return levels[_rand(p_cummulative)]
 end
 
-function Base.rand(d::UnivariateNominal, n::Int)
+function Base.rand(d::UnivariateFinite, n::Int)
     p_cummulative = _cummulative(d)
     levels = collect(keys(d.prob_given_level))
     return [levels[_rand(p_cummulative)] for i in 1:n]
 end
-    
-function Distributions.fit(d::Type{<:UnivariateNominal}, v::AbstractVector{L}) where L
-    N = length(v)
-    prob_given_level = Dict{L,Float64}()
-    count_given_level = Distributions.countmap(v)
-    for (x, c) in count_given_level
-        prob_given_level[x] = c/N
-    end
-    return UnivariateNominal(prob_given_level)
-end
 
-
-# if fitting to categorical array, must include missing levels with prob zero
-function Distributions.fit(d::Type{<:UnivariateNominal}, v::CategoricalVector{L,R,V}) where {L,R,V}
-    N = length(skipmissing(v) |> collect)
-    prob_given_level = Dict{V,Float64}() # V is the type of levels
-    for x in levels(v)
-        prob_given_level[x] = 0
-    end
-    count_given_level = Distributions.countmap(skipmissing(v) |> collect)
-    for (x, c) in count_given_level
-        prob_given_level[x] = c/N
-    end
-    return UnivariateNominal(prob_given_level)
+function Distributions.fit(d::Type{<:UnivariateFinite}, v::AbstractVector)
+    vpure = skipmissing(v) |> collect
+    isempty(vpure) && error("No non-missing data to fit. ")
+    N = length(vpure)
+    count_given_level = Distributions.countmap(vpure)
+    prob_given_level = Dict([x=>c/N for (x, c) in count_given_level])
+    return UnivariateFinite(prob_given_level)
 end
     
     

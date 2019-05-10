@@ -4,6 +4,7 @@
 module MLJBase
 
 export MLJType, Model, Supervised, Unsupervised, Deterministic, Probabilistic
+export DeterministicNetwork, ProbabilisticNetwork
 export fit, update, clean!
 export predict, predict_mean, predict_mode, fitted_params
 export transform, inverse_transform, se, evaluate, best
@@ -11,20 +12,19 @@ export load_path, package_url, package_name, package_uuid
 export input_scitype_union, input_is_multivariate       
 export target_scitype_union, target_quantity            
 export is_pure_julia, is_wrapper                                 
-export fitresult_type
 
 export params                                        # parameters.jl
-export reconstruct                                   # data.jl
+export reconstruct, int, decoder, classes            # data.jl
 export selectrows, selectcols, select, nrows, schema # data.jl
 export table, levels_seen, matrix, container_type    # data.jl
 export partition,StratifiedKFold                     # utilities.jl
-export Found, Continuous, Discrete, OrderedFactor    # scitypes.jl
-export FiniteOrderedFactor                           # scitypes.jl
+export Found, Continuous, Finite, Infinite           # scitypes.jl
+export OrderedFactor, Unknown                        # scitypes.jl
 export Count, Multiclass, Binary                     # scitypes.jl
 export scitype, scitype_union, scitypes              # scitypes.jl
 export HANDLE_GIVEN_ID, @more, @constant             # show.jl
 export color_on, color_off                           # show.jl
-export UnivariateNominal, average                    # distributions.jl
+export UnivariateFinite, average                    # distributions.jl
 export SupervisedTask, UnsupervisedTask, MLJTask     # tasks.jl
 export X_and_y, X_, y_, nrows, nfeatures             # tasks.jl
 export load_boston, load_ames, load_iris             # datasets.jl
@@ -43,7 +43,6 @@ import Distributions: pdf, mode
 using CategoricalArrays
 import CategoricalArrays
 import CSV
-using DataFrames # remove ultimately
 
 # to be extended:
 import StatsBase: fit, predict, fit!
@@ -75,18 +74,23 @@ abstract type MLJType end
 # for storing hyperparameters:
 abstract type Model <: MLJType end
 
-abstract type Supervised{R} <: Model end # parameterized by fit-result type `R`
-abstract type Unsupervised <: Model  end
+abstract type Supervised <: Model end 
+abstract type Unsupervised <: Model end
 
 # supervised models that `predict` probability distributions are of:
-abstract type Probabilistic{R} <: Supervised{R} end
+abstract type Probabilistic <: Supervised end
 
 # supervised models that `predict` point-values are of:
-abstract type Deterministic{R} <: Supervised{R} end
+abstract type Deterministic <: Supervised end
 
-# MLJType objects are `==` if: (i) they have a common supertype AND (ii)
-# they have the same set of defined fields AND (iii) their defined field
-# values are `==`:
+# for models that are "exported" learning networks (return a Node as
+# their fit-result; see MLJ/networks.jl):
+abstract type ProbabilisticNetwork <: Probabilistic end
+abstract type DeterministicNetwork <: Deterministic end
+
+# by default, MLJType objects are `==` if: (i) they have a common
+# supertype AND (ii) they have the same set of defined fields AND
+# (iii) their defined field values are `==`:
 function ==(m1::M1, m2::M2) where {M1<:MLJType,M2<:MLJType}
     if M1 != M1
         return false
@@ -176,14 +180,6 @@ package_url(model::Model) = package_url(typeof(model))
 
 # mode:
 predict_mode(model::Probabilistic, fitresult, Xnew) =
-    predict_mode(model, fitresult, target_scitype_union(model), Xnew)
-function predict_mode(model::Probabilistic, fitresult, ::Type{<:Union{Multiclass,OrderedFactor}}, Xnew)
-    prob_predictions = predict(model, fitresult, Xnew)
-    null = categorical(levels(prob_predictions[1]))[1:0] # empty cat vector with all levels
-    modes = categorical(mode.(prob_predictions))
-    return vcat(null, modes)
-end
-predict_mode(model::Probabilistic, fitresult, ::Type{<:Count}, Xnew) =
     mode.(predict(model, fitresult, Xnew))
 
 # mean:
@@ -192,27 +188,7 @@ predict_mean(model::Probabilistic, fitresult, Xnew) =
 
 # median:
 predict_median(model::Probabilistic, fitresult, Xnew) =
-    predict_median(model, fitresult, target_scitype_union(model), Xnew)
-function predict_median(model::Probabilistic, fitresult, ::Type{<:OrderedFactor}, Xnew) 
-    prob_predictions = predict(model, fitresult, Xnew)
-    null = categorical(levels(prob_predictions[1]))[1:0] # empty cat vector with all levels
-    medians = categorical(median.(prob_predictions))
-    return vcat(null, medians)
-end
-predict_median(model::Probabilistic, fitresult, ::Type{<:Union{Continuous, Count}}, Xnew) =
     median.(predict(model, fitresult, Xnew))
-
-# returns the fit-result type declared by a supervised model
-# declaration (to test actual fit-results have the declared type):
-"""
-    MLJBase.fitresult_type(m)
-
-Returns the fitresult type of any supervised model (or model type)
-`m`, as declared in the model `mutable struct` declaration.
-
-"""
-fitresult_type(M::Type{<:Supervised}) = supertype(M).parameters[1]
-fitresult_type(m::Supervised) = fitresult_type(typeof(m))
 
 # for unpacking the fields of MLJ objects:
 include("parameters.jl")
@@ -220,12 +196,12 @@ include("parameters.jl")
 # for displaying objects of `MLJType`:
 include("show.jl") 
 
+# convenience methods for manipulating categorical and tabular data
+include("data.jl")
+
 # probability distributions and methods not provided by
 # Distributions.jl package:
 include("distributions.jl")
-
-# convenience methods for manipulating categorical and tabular data
-include("data.jl")
 
 include("info.jl")
 include("tasks.jl")
