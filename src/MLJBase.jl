@@ -88,28 +88,7 @@ abstract type Deterministic <: Supervised end
 abstract type ProbabilisticNetwork <: Probabilistic end
 abstract type DeterministicNetwork <: Deterministic end
 
-# by default, MLJType objects are `==` if: (i) they have a common
-# supertype AND (ii) they have the same set of defined fields AND
-# (iii) their defined field values are `==`:
-function ==(m1::M1, m2::M2) where {M1<:MLJType,M2<:MLJType}
-    if M1 != M1
-        return false
-    end
-    defined1 = filter(fieldnames(M1)|>collect) do fld
-        isdefined(m1, fld)
-    end
-    defined2 = filter(fieldnames(M1)|>collect) do fld
-        isdefined(m2, fld)
-    end
-    if defined1 != defined2
-        return false
-    end
-    same_values = true
-    for fld in defined1
-        same_values = same_values && getfield(m1, fld) == getfield(m2, fld)
-    end
-    return same_values
-end
+include("equality.jl")
 
 
 ## THE MODEL INTERFACE
@@ -120,7 +99,7 @@ end
 # or, one the simplified versions
 # `fit(model, X, y) -> fitresult`
 # `fit(model, X, ys...) -> fitresult`
-fit(model::Model, verbosity::Int, args...) = fit(model, args...), nothing, nothing
+fit(model::Model, verbosity::Integer, args...) = fit(model, args...), nothing, nothing
 
 # each model interface may optionally overload the following refitting
 # method:
@@ -152,8 +131,10 @@ function best end
 clean!(model::Model) = ""
 
 # fallback trait declarations:
-target_scitype_union(::Type{<:Supervised}) = Union{Found,NTuple{<:Found}}  # a Tuple type in multivariate case
-output_scitype_union(::Type{<:Unsupervised}) = Union{Missing,Found} # never a Tuple type
+target_scitype_union(::Type{<:Supervised}) =
+    Union{Found,NTuple{N,Found}} where N # a Tuple type in multivariate case
+output_scitype_union(::Type{<:Unsupervised}) =
+    Union{Missing,Found}                 
 output_is_multivariate(::Type{<:Unsupervised}) = true
 input_scitype_union(::Type{<:Model}) = Union{Missing,Found}
 input_is_multivariate(::Type{<:Model}) = true 
@@ -164,7 +145,6 @@ package_uuid(::Type{<:Model}) = "unknown"
 package_url(::Type{<:Model}) = "unknown"
 is_wrapper(::Type{<:Model}) = false
 is_wrapper(m::Model) = is_wrapper(typeof(m))
-
 
 target_scitype_union(model::Model) = target_scitype_union(typeof(model))
 input_scitype_union(model::Model) = input_scitype_union(typeof(model))
