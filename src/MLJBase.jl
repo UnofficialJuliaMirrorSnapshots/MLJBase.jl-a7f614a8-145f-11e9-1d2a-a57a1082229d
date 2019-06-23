@@ -4,7 +4,7 @@
 module MLJBase
 
 export MLJType, Model, Supervised, Unsupervised, Deterministic, Probabilistic
-export DeterministicNetwork, ProbabilisticNetwork
+export DeterministicNetwork, ProbabilisticNetwork, UnsupervisedNetwork
 export fit, update, clean!
 export predict, predict_mean, predict_mode, fitted_params
 export transform, inverse_transform, se, evaluate, best
@@ -84,10 +84,11 @@ abstract type Probabilistic <: Supervised end
 abstract type Deterministic <: Supervised end
 
 # for models that are "exported" learning networks (return a Node as
-# their fit-result; see MLJ/networks.jl):
+# their fit-result; see MLJ docs:
 abstract type ProbabilisticNetwork <: Probabilistic end
 abstract type DeterministicNetwork <: Deterministic end
-
+abstract type UnsupervisedNetwork <: Unsupervised end
+    
 include("equality.jl")
 
 
