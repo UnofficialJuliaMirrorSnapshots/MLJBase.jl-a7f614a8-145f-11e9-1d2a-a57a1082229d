@@ -16,12 +16,13 @@ function finaltypes(T::Type)
 end
 
 
+# NOTE: deprecated, see @mlj_model
 """
 
     @set_defaults ModelType(args...)
     @set_defaults ModelType args
 
-Create a keyword constructor for any type `ModelType<::MLJBase.Model`,
+Create a keyword constructor for any type `ModelType<:MLJBase.Model`,
 using as default values those listed in `args`. These must include a
 value for every field, and in the order appearing in
 `fieldnames(ModelType)`.
@@ -39,7 +40,7 @@ trivial fallback defined for all subtypes of `MLJBase.Model`.
    end
 
    @set_defaults Foo(1,2)
-   
+
    julia> Foo()
    Foo(1, 2)
 
@@ -76,12 +77,9 @@ function set_defaults_(mod, T_ex, values)
                          eachindex(values)]
 
     program = quote
-        $T_ex(; $(equality_pair_exs...)) = 
+        $T_ex(; $(equality_pair_exs...)) =
             $T_ex($(fields...))
     end
     mod.eval(program)
 
 end
-
-
-
